@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RootType {
+  PAST_PAPERS
+  MODEL_PAPERS
+  TERM_TEST
+  SYLLABUS
+  TEACHERS_GUIDE
+  TEXT_BOOKS
+  GAZETTE
+}
+
+enum FacetKey {
+  EXAM
+  GRADE
+  SUBJECT
+  YEAR
+  MEDIUM
+  TERM
+  PROVINCE
+}
+
+enum Medium {
+  SINHALA
+  TAMIL
+  ENGLISH
+}
+
+enum DocumentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum Operator {
+  DIALOG
+  MOBITEL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  rootType    RootType
+  name        String
+  slug        String
+  description String?
+  sortOrder   Int        @default(0)
+  allowedFilters FacetKey[] @default([])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[]
+
+  @@unique([slug, rootType])
+  @@index([rootType])
+  @@index([parentId])
+}
+
+model FacetValue {
+  id        String          @id @default(cuid())
+  facetKey  FacetKey
+  label     String
+  slug      String
+  sortOrder Int             @default(0)
+  documents DocumentFacet[]
+
+  @@unique([facetKey, slug])
+  @@index([facetKey])
+}
+
+model Document {
+  id          String          @id @default(cuid())
+  title       String
+  slug        String          @unique
+  description String?
+  categoryId  String
+  category    Category        @relation(fields: [categoryId], references: [id])
+  status      DocumentStatus  @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  files       DocumentFile[]
+  facets      DocumentFacet[]
+  downloadLogs DownloadLog[]
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+model DocumentFile {
+  id           String        @id @default(cuid())
+  documentId   String
+  document       Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  medium         Medium
+  relativePath   String
+  fileName       String
+  sizeBytes      Int
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  downloadLogs   DownloadLog[]
+
+  @@unique([documentId, medium])
+  @@index([documentId])
+}
+
+model DocumentFacet {
+  documentId   String
+  facetValueId String
+  document     Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  facetValue   FacetValue @relation(fields: [facetValueId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, facetValueId])
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  mobile             String             @unique
+  name               String?
+  operator           Operator
+  subscriberId       String?
+  subscriptionStatus SubscriptionStatus @default(PENDING)
+  subscribedAt       DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  downloadLogs       DownloadLog[]
+  otpSessions        OtpSession[]
+}
+
+model OtpSession {
+  id          String    @id @default(cuid())
+  referenceNo String    @unique
+  mobile      String
+  operator    Operator
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+}
+
+model DownloadLog {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  documentFileId String
+  documentFile   DocumentFile @relation(fields: [documentFileId], references: [id])
+  documentId     String
+  document       Document     @relation(fields: [documentId], references: [id])
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([userId])
+  @@index([documentFileId])
+  @@index([createdAt])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
