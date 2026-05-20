@@ -25,15 +25,14 @@ export class FilesController {
     return this.filesService.streamPreview(id, res);
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @Public()
   @Get(':id/download')
   download(
     @Param('id') id: string,
-    @CurrentUser('sub') userId: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    return this.filesService.streamDownload(id, userId, res, {
+    return this.filesService.streamDownload(id, req, res, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
