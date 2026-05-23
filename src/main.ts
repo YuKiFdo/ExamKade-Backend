@@ -12,8 +12,13 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  const rawOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  const origin = rawOrigin.includes(',') 
+    ? rawOrigin.split(',').map(o => o.trim()) 
+    : rawOrigin;
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin,
     credentials: true,
   });
   app.setGlobalPrefix('api');
