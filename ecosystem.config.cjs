@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'examkade-backend',
-      script: 'dist/main.js',
+      script: 'dist/src/main.js',
       instances: 'max', // or a specific number of instances
       exec_mode: 'cluster',
       autorestart: true,
