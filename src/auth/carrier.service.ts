@@ -16,6 +16,8 @@ export class CarrierService {
         ? 'https://api.dialog.lk/subscription/otp/request'
         : 'https://api.mspace.lk/otp/request';
 
+    console.log('[Carrier] OTP Request →', { url, payload });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -24,12 +26,15 @@ export class CarrierService {
 
     if (!res.ok) {
       const text = await res.text();
+      console.log('[Carrier] OTP Request FAILED →', res.status, text);
       throw new BadRequestException(
         `Carrier OTP request failed: ${res.status} ${text}`,
       );
     }
 
-    return res.json() as Promise<{ referenceNo?: string; statusCode?: string }>;
+    const body = await res.json();
+    console.log('[Carrier] OTP Response ←', JSON.stringify(body, null, 2));
+    return body as { referenceNo?: string; statusCode?: string };
   }
 
   async verifyOtp(referenceNo: string, otp: string, operator: Operator) {
@@ -55,6 +60,35 @@ export class CarrierService {
       const text = await res.text();
       throw new BadRequestException(
         `Carrier OTP verify failed: ${res.status} ${text}`,
+      );
+    }
+
+    return res.json() as Promise<Record<string, unknown>>;
+  }
+
+  async unsubscribe(subscriberId: string, operator: Operator) {
+    const payload = {
+      applicationId: this.getAppId(operator),
+      password: this.getPassword(operator),
+      subscriberId,
+      action: "0",
+    };
+
+    const url =
+      operator === Operator.DIALOG
+        ? 'https://api.dialog.lk/subscription/send'
+        : 'https://api.mspace.lk/subscription/send';
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new BadRequestException(
+        `Carrier unsubscribe failed: ${res.status} ${text}`,
       );
     }
 

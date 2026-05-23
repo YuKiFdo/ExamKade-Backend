@@ -127,7 +127,7 @@ export class FilesService {
         // Draw diagonal watermarks grid
         for (let x = -100; x < width + 200; x += 250) {
           for (let y = -100; y < height + 200; y += 180) {
-            page.drawText('FONIX EDU', {
+            page.drawText('DOC.LK', {
               x,
               y,
               size: 24,

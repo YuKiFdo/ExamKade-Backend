@@ -317,4 +317,24 @@ export class AdminController {
   deleteFile(@Param('id') id: string) {
     return this.files.deleteFile(id);
   }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Get('settings/login-warning')
+  async getLoginWarning() {
+    const setting = await this.prisma.setting.findUnique({ where: { key: 'login_warning' } });
+    return { showWarning: setting?.value === 'true' };
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Post('settings/login-warning')
+  async toggleLoginWarning(@Body() body: { showWarning: boolean }) {
+    await this.prisma.setting.upsert({
+      where: { key: 'login_warning' },
+      update: { value: body.showWarning.toString() },
+      create: { key: 'login_warning', value: body.showWarning.toString() }
+    });
+    return { success: true };
+  }
 }

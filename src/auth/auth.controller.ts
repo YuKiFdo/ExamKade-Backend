@@ -15,11 +15,14 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 
+import { PrismaService } from '../prisma/prisma.service';
+
 @Controller('auth')
 export class AuthController {
   constructor(
     private authService: AuthService,
     private config: ConfigService,
+    private prisma: PrismaService,
   ) {}
 
   @Public()
@@ -47,6 +50,19 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser('sub') userId: string) {
     return this.authService.getMe(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('unsubscribe')
+  unsubscribe(@CurrentUser('sub') userId: string) {
+    return this.authService.unsubscribe(userId);
+  }
+
+  @Public()
+  @Get('settings/login-warning')
+  async getPublicLoginWarning() {
+    const setting = await this.prisma.setting.findUnique({ where: { key: 'login_warning' } });
+    return { showWarning: setting?.value === 'true' };
   }
 
   private setAuthCookie(res: Response, token: string) {
