@@ -1,0 +1,93 @@
+name: Backend Deployment
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Install Dependencies
+        run: |
+          set -e
+          npm install
+          npm install -g @nestjs/cli
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build NestJS project
+        run: npm run build
+
+      - name: Package build
+        run: |
+          tar -czf build.tar.gz dist package.json package-lock.json ecosystem.config.cjs prisma
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Setup SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          NODE_ENV=production
+          PORT=${{ secrets.PORT }}
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          STORAGE_ROOT=${{ secrets.STORAGE_ROOT }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN }}
+          ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
+          CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+          COOKIE_SECURE=${{ secrets.COOKIE_SECURE }}
+          
+          DIALOG_APPLICATION_ID=${{ secrets.DIALOG_APPLICATION_ID }}
+          DIALOG_PASSWORD=${{ secrets.DIALOG_PASSWORD }}
+          DIALOG_APPLICATION_HASH=${{ secrets.DIALOG_APPLICATION_HASH }}
+          
+          MOBITEL_APPLICATION_ID=${{ secrets.MOBITEL_APPLICATION_ID }}
+          MOBITEL_PASSWORD=${{ secrets.MOBITEL_PASSWORD }}
+          MOBITEL_APPLICATION_HASH=${{ secrets.MOBITEL_APPLICATION_HASH }}
+          EOF
+
+      - name: Upload build and .env to Azure VM
+        run: |
+          sshpass -p '${{ secrets.SSH_PASSWORD }}' scp -o StrictHostKeyChecking=no build.tar.gz .env ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.PROJECT_DIR }}
+
+      - name: Deploy on Azure VM
+        run: |
+          set -e
+          sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+          cd ${{ secrets.PROJECT_DIR }}
+
+          # Extract new files
+          tar -xzf build.tar.gz
+          
+          # Install production dependencies
+          npm install --production
+          
+          # Apply Prisma migrations (optional but recommended for production DBs)
+          # npx prisma migrate deploy
+          
+          # Reload PM2 ecosystem
+          npx pm2 reload ecosystem.config.cjs --env production
+          
+          # Clean up tarball
+          rm build.tar.gz
+          EOF
