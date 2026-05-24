@@ -5,6 +5,8 @@ import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Trust reverse proxy headers (e.g. X-Forwarded-Proto) for secure cookies
+  (app as any).set('trust proxy', 1);
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

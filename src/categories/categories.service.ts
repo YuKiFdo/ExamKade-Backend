@@ -15,7 +15,7 @@ const ROOT_FACETS: Record<RootType, FacetKey[]> = {
   SYLLABUS: [FacetKey.GRADE, FacetKey.SUBJECT, FacetKey.MEDIUM],
   TEACHERS_GUIDE: [FacetKey.GRADE, FacetKey.SUBJECT, FacetKey.MEDIUM],
   TEXT_BOOKS: [FacetKey.GRADE, FacetKey.SUBJECT, FacetKey.MEDIUM],
-  GAZETTE: [FacetKey.YEAR, FacetKey.MEDIUM],
+  GAZETTE: [],
 };
 
 @Injectable()

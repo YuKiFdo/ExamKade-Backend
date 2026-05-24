@@ -46,12 +46,14 @@ export class AdminController {
   ) {
     const { admin, token } = await this.adminAuth.login(body.email, body.password);
     const secure = this.config.get('COOKIE_SECURE') === 'true';
+    const domain = this.config.get('COOKIE_DOMAIN');
     res.cookie('admin_token', token, {
       httpOnly: true,
       secure,
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
+      ...(domain ? { domain } : {}),
     });
     return { admin };
   }

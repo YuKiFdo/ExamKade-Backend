@@ -71,12 +71,14 @@ export class AuthController {
 
   private cookieOptions() {
     const secure = this.config.get('COOKIE_SECURE') === 'true';
+    const domain = this.config.get('COOKIE_DOMAIN');
     return {
       httpOnly: true,
       secure,
       sameSite: 'lax' as const,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
+      ...(domain ? { domain } : {}),
     };
   }
 }
