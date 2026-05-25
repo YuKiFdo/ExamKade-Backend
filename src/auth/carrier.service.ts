@@ -5,7 +5,7 @@ import { toSubscriberId } from '../common/utils/slug.util';
 
 @Injectable()
 export class CarrierService {
-  constructor(private config: ConfigService) {}
+  constructor(private config: ConfigService) { }
 
   async requestOtp(mobile: string, operator: Operator) {
     const subscriberId = toSubscriberId(mobile);
@@ -106,9 +106,10 @@ export class CarrierService {
           : this.config.get('MOBITEL_APPLICATION_HASH') || 'abcdefgh',
       applicationMetaData: {
         client: 'MOBILEAPP',
-        device: 'Web Browser',
-        os: 'Web',
-        appCode: this.config.get('CORS_ORIGIN') || 'http://localhost:3000',
+        device: 'Xiaomi Mi 11 Lite',
+        os: 'Android',
+        // appCode: this.config.get('CORS_ORIGIN') || 'http://localhost:3000',
+        appCode: 'https://play.google.com/store/apps/'
       },
     };
   }
