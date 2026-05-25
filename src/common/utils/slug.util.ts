@@ -15,5 +15,5 @@ export function normalizeMobile(mobile: string): string {
 }
 
 export function toSubscriberId(mobile: string): string {
-  return `tel:+${normalizeMobile(mobile)}`;
+  return `tel:${normalizeMobile(mobile)}`;
 }
