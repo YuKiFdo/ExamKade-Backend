@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -13,10 +14,16 @@ import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 
 import { PrismaService } from '../prisma/prisma.service';
 
+import { ClientTypes } from '../common/decorators/client-types.decorator';
+import { SwaggerClientType } from '../common/decorators/swagger-client-type.decorator';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+
+@ClientTypes('both')
+@SwaggerClientType('both')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -26,20 +33,24 @@ export class AuthController {
   ) {}
 
   @Public()
+  @ApiOperation({ summary: 'Request OTP for login' })
   @Post('otp/request')
   requestOtp(@Body() dto: RequestOtpDto) {
     return this.authService.requestOtp(dto);
   }
 
   @Public()
+  @ApiOperation({ summary: 'Verify OTP and login' })
   @Post('otp/verify')
-  async verifyOtp(@Body() dto: VerifyOtpDto, @Res({ passthrough: true }) res: Response) {
-    const { user, token } = await this.authService.verifyOtp(dto);
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const source = req.originalUrl?.includes('/mobile') ? 'MOBILE' : 'WEB';
+    const { user, token } = await this.authService.verifyOtp(dto, source);
     this.setAuthCookie(res, token);
     return { user: { id: user.id, mobile: user.mobile, name: user.name, subscriptionStatus: user.subscriptionStatus } };
   }
 
   @Public()
+  @ApiOperation({ summary: 'Logout user' })
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie('access_token', this.cookieOptions());
@@ -47,18 +58,21 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get current user profile' })
   @Get('me')
   me(@CurrentUser('sub') userId: string) {
     return this.authService.getMe(userId);
   }
 
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Unsubscribe from service' })
   @Post('unsubscribe')
   unsubscribe(@CurrentUser('sub') userId: string) {
     return this.authService.unsubscribe(userId);
   }
 
   @Public()
+  @ApiOperation({ summary: 'Get public login warning setting' })
   @Get('settings/login-warning')
   async getPublicLoginWarning() {
     const setting = await this.prisma.setting.findUnique({ where: { key: 'login_warning' } });

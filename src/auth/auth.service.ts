@@ -89,7 +89,7 @@ export class AuthService {
     return { referenceNo };
   }
 
-  async verifyOtp(dto: VerifyOtpDto) {
+  async verifyOtp(dto: VerifyOtpDto, source?: 'WEB' | 'MOBILE') {
     console.log('[Auth] verifyOtp →', { referenceNo: dto.referenceNo, otp: dto.otp });
 
     const session = await this.prisma.otpSession.findUnique({
@@ -136,6 +136,8 @@ export class AuthService {
         subscriberId: toSubscriberId(session.mobile),
         subscriptionStatus: SubscriptionStatus.ACTIVE,
         subscribedAt: new Date(),
+        // @ts-ignore - TS server cache issue with Prisma types
+        registrationSource: source || (dto as any).source || 'WEB',
       },
       update: {
         operator: session.operator,

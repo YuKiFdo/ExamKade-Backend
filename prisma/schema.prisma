@@ -125,6 +125,11 @@ model DocumentFacet {
   @@id([documentId, facetValueId])
 }
 
+enum RegistrationSource {
+  WEB
+  MOBILE
+}
+
 model User {
   id                 String             @id @default(cuid())
   mobile             String             @unique
@@ -133,6 +138,7 @@ model User {
   subscriberId       String?
   subscriptionStatus SubscriptionStatus @default(PENDING)
   subscribedAt       DateTime?
+  registrationSource RegistrationSource @default(WEB)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   downloadLogs       DownloadLog[]

@@ -27,7 +27,12 @@ import { DocumentStatus, Medium, RootType, FacetKey } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ClientTypes } from '../common/decorators/client-types.decorator';
+import { SwaggerClientType } from '../common/decorators/swagger-client-type.decorator';
 
+@ClientTypes('web')
+@SwaggerClientType('web')
 @Controller('admin')
 export class AdminController {
   constructor(
@@ -39,6 +44,7 @@ export class AdminController {
   ) {}
 
   @Public()
+  @ApiOperation({ summary: 'Post login' })
   @Post('login')
   async login(
     @Body() body: { email: string; password: string },
@@ -59,6 +65,7 @@ export class AdminController {
   }
 
   @Public()
+  @ApiOperation({ summary: 'Post logout' })
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie('admin_token', { path: '/' });
@@ -67,6 +74,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get dashboard' })
   @Get('dashboard')
   async dashboard() {
     const [users, documents, downloads, todayDownloads] = await Promise.all([
@@ -90,6 +98,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get users' })
   @Get('users')
   listUsers(@Query('page') page?: string) {
     const p = page ? parseInt(page, 10) : 1;
@@ -103,6 +112,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get downloads' })
   @Get('downloads')
   listDownloads(@Query('page') page?: string) {
     const p = page ? parseInt(page, 10) : 1;
@@ -120,6 +130,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get facets' })
   @Get('facets')
   listFacets() {
     return this.prisma.facetValue.findMany({ orderBy: [{ facetKey: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }] });
@@ -127,12 +138,14 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get facets  id' })
   @Get('facets/:id')
   async getFacet(@Param('id') id: string) {
     const facet = await this.prisma.facetValue.findUnique({ where: { id } });
     if (!facet) throw new NotFoundException('Filter option not found');
     return facet;
   }
+  @ApiOperation({ summary: 'Post facets' })
   @Post('facets')
   createFacet(
     @Body()
@@ -148,6 +161,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Patch facets  id' })
   @Patch('facets/:id')
   updateFacet(
     @Param('id') id: string,
@@ -163,6 +177,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Delete facets  id' })
   @Delete('facets/:id')
   async deleteFacet(@Param('id') id: string) {
     const docCount = await this.prisma.documentFacet.count({ where: { facetValueId: id } });
@@ -174,6 +189,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get categories' })
   @Get('categories')
   listCategories(@Query('rootType') rootType?: RootType) {
     return this.prisma.category.findMany({
@@ -185,6 +201,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Post categories' })
   @Post('categories')
   createCategory(
     @Body()
@@ -202,6 +219,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Patch categories  id' })
   @Patch('categories/:id')
   updateCategory(
     @Param('id') id: string,
@@ -219,6 +237,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Delete categories  id' })
   @Delete('categories/:id')
   async deleteCategory(@Param('id') id: string) {
     const docCount = await this.prisma.document.count({ where: { categoryId: id } });
@@ -234,6 +253,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get documents' })
   @Get('documents')
   listDocuments(@Query('page') page?: string) {
     return this.documents.findAllAdmin(page ? parseInt(page, 10) : 1);
@@ -241,6 +261,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get documents  id' })
   @Get('documents/:id')
   getDocument(@Param('id') id: string) {
     return this.documents.findByIdAdmin(id);
@@ -248,6 +269,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Post documents' })
   @Post('documents')
   createDocument(
     @Body()
@@ -265,6 +287,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Patch documents  id' })
   @Patch('documents/:id')
   updateDocument(
     @Param('id') id: string,
@@ -283,6 +306,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Delete documents  id' })
   @Delete('documents/:id')
   deleteDocument(@Param('id') id: string) {
     return this.documents.delete(id);
@@ -290,6 +314,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Post documents  id files' })
   @Post('documents/:id/files')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -315,6 +340,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Delete files  id' })
   @Delete('files/:id')
   deleteFile(@Param('id') id: string) {
     return this.files.deleteFile(id);
@@ -322,6 +348,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Get settings login-warning' })
   @Get('settings/login-warning')
   async getLoginWarning() {
     const setting = await this.prisma.setting.findUnique({ where: { key: 'login_warning' } });
@@ -330,6 +357,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
+  @ApiOperation({ summary: 'Post settings login-warning' })
   @Post('settings/login-warning')
   async toggleLoginWarning(@Body() body: { showWarning: boolean }) {
     await this.prisma.setting.upsert({
