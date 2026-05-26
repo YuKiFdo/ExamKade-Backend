@@ -189,11 +189,11 @@ async function main() {
     update: { status: DocumentStatus.PUBLISHED },
   });
 
-  const adminHash = await bcrypt.hash('admin123', 12);
+  const adminHash = await bcrypt.hash('examkadeadmin@123', 12);
   await prisma.adminUser.upsert({
-    where: { email: 'admin@fonix.edu' },
+    where: { email: 'admin@examkade.com' },
     create: {
-      email: 'admin@fonix.edu',
+      email: 'admin@examkade.com',
       passwordHash: adminHash,
       name: 'Admin',
     },
