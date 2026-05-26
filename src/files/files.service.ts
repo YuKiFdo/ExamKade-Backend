@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LocalStorageService } from '../storage/local-storage.service';
 import { DocumentStatus, Medium, SubscriptionStatus } from '@prisma/client';
 import { Response, Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 
 @Injectable()
@@ -29,7 +30,57 @@ export class FilesService {
     return file;
   }
 
-  streamPreview(fileId: string, res: Response) {
+  /**
+   * Generate a signed token for file access. Expires in 5 minutes.
+   */
+  generateSignedToken(fileId: string): { token: string; expiresAt: number } {
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+    const secret = this.config.get<string>('JWT_SECRET') || 'dev-secret';
+    const payload = `${fileId}:${expiresAt}`;
+    const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    const token = Buffer.from(`${payload}:${signature}`).toString('base64url');
+    return { token, expiresAt };
+  }
+
+  /**
+   * Verify a signed file token. Throws if invalid or expired.
+   */
+  verifySignedToken(fileId: string, token: string): void {
+    if (!token) {
+      throw new UnauthorizedException('Missing file access token');
+    }
+    try {
+      const decoded = Buffer.from(token, 'base64url').toString();
+      const parts = decoded.split(':');
+      if (parts.length !== 3) throw new Error('Invalid token format');
+
+      const [tokenFileId, expiresAtStr, signature] = parts;
+      const expiresAt = parseInt(expiresAtStr, 10);
+
+      // Check expiration
+      if (Date.now() > expiresAt) {
+        throw new UnauthorizedException('File link has expired. Please go back and try again.');
+      }
+
+      // Check file ID matches
+      if (tokenFileId !== fileId) {
+        throw new UnauthorizedException('Invalid file access token');
+      }
+
+      // Verify signature
+      const secret = this.config.get<string>('JWT_SECRET') || 'dev-secret';
+      const expectedSig = crypto.createHmac('sha256', secret).update(`${tokenFileId}:${expiresAtStr}`).digest('hex');
+      if (signature !== expectedSig) {
+        throw new UnauthorizedException('Invalid file access token');
+      }
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException('Invalid file access token');
+    }
+  }
+
+  streamPreview(fileId: string, token: string, res: Response) {
+    this.verifySignedToken(fileId, token);
     return this.getFileRecord(fileId).then((file) => {
       // Use a custom MIME type to prevent download managers (like IDM) from intercepting the PDF preview
       res.setHeader('Content-Type', 'application/x-fonix-document');
@@ -45,29 +96,31 @@ export class FilesService {
 
   async streamDownload(
     fileId: string,
+    token: string,
     req: Request,
     res: Response,
     meta: { ip?: string; userAgent?: string },
   ) {
+    this.verifySignedToken(fileId, token);
     const file = await this.getFileRecord(fileId);
 
     // 1. Check if user is authenticated and has an active subscription
-    let token: string | null = null;
+    let authToken: string | null = null;
     if (req.cookies && req.cookies['access_token']) {
-      token = req.cookies['access_token'];
+      authToken = req.cookies['access_token'];
     } else {
       const authHeader = req.headers['authorization'];
       if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
+        authToken = authHeader.substring(7);
       }
     }
 
     let userId: string | null = null;
     let isSubscribed = false;
 
-    if (token) {
+    if (authToken) {
       try {
-        const payload = this.jwtService.verify(token, {
+        const payload = this.jwtService.verify(authToken, {
           secret: this.config.get<string>('JWT_SECRET') || 'dev-secret',
         });
         if (payload && payload.sub) {
