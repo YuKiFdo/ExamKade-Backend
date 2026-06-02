@@ -86,14 +86,25 @@ jobs:
           sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
           set -euo pipefail
           cd "${{ secrets.PROJECT_DIR }}"
+          echo "=== Deploy directory: $(pwd) ==="
 
           tar -xzf build.tar.gz
+          ls -la prisma/
 
           test -f prisma/seed.js || { echo "Missing prisma/seed.js after extract"; exit 1; }
 
           npm ci --omit=dev
 
           npx prisma generate
+
+          # One-time: set repo secret PRISMA_BASELINE_MIGRATIONS=true when the DB
+          # already has schema but no _prisma_migrations history (P3005). Remove after success.
+          if [ "${{ secrets.PRISMA_BASELINE_MIGRATIONS }}" = "true" ]; then
+            echo "Baselining existing database..."
+            npx prisma migrate resolve --applied "20260519075135_init"
+            npx prisma migrate resolve --applied "20260519081007_add_gazette_root_type"
+          fi
+
           npx prisma migrate deploy
 
           if npx pm2 describe examkade-backend >/dev/null 2>&1; then
