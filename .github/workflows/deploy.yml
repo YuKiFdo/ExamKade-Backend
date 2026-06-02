@@ -17,12 +17,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.x"
+          cache: npm
 
-      - name: Install Dependencies
-        run: |
-          set -e
-          npm install
-          npm install -g @nestjs/cli
+      - name: Install dependencies
+        run: npm ci
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -45,25 +43,38 @@ jobs:
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Create .env file
+        env:
+          PORT: ${{ secrets.PORT }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STORAGE_ROOT: ${{ secrets.STORAGE_ROOT }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+          ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+          COOKIE_SECURE: ${{ secrets.COOKIE_SECURE }}
+          DIALOG_APPLICATION_ID: ${{ secrets.DIALOG_APPLICATION_ID }}
+          DIALOG_PASSWORD: ${{ secrets.DIALOG_PASSWORD }}
+          DIALOG_APPLICATION_HASH: ${{ secrets.DIALOG_APPLICATION_HASH }}
+          MOBITEL_APPLICATION_ID: ${{ secrets.MOBITEL_APPLICATION_ID }}
+          MOBITEL_PASSWORD: ${{ secrets.MOBITEL_PASSWORD }}
+          MOBITEL_APPLICATION_HASH: ${{ secrets.MOBITEL_APPLICATION_HASH }}
         run: |
-          cat > .env << EOF
+          cat > .env <<EOF
           NODE_ENV=production
-          PORT=${{ secrets.PORT }}
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          STORAGE_ROOT=${{ secrets.STORAGE_ROOT }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN }}
-          ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }}
-          CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
-          COOKIE_SECURE=${{ secrets.COOKIE_SECURE }}
-          
-          DIALOG_APPLICATION_ID=${{ secrets.DIALOG_APPLICATION_ID }}
-          DIALOG_PASSWORD=${{ secrets.DIALOG_PASSWORD }}
-          DIALOG_APPLICATION_HASH=${{ secrets.DIALOG_APPLICATION_HASH }}
-          
-          MOBITEL_APPLICATION_ID=${{ secrets.MOBITEL_APPLICATION_ID }}
-          MOBITEL_PASSWORD=${{ secrets.MOBITEL_PASSWORD }}
-          MOBITEL_APPLICATION_HASH=${{ secrets.MOBITEL_APPLICATION_HASH }}
+          PORT=${PORT}
+          DATABASE_URL=${DATABASE_URL}
+          STORAGE_ROOT=${STORAGE_ROOT}
+          JWT_SECRET=${JWT_SECRET}
+          JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+          ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}
+          CORS_ORIGIN=${CORS_ORIGIN}
+          COOKIE_SECURE=${COOKIE_SECURE}
+          DIALOG_APPLICATION_ID=${DIALOG_APPLICATION_ID}
+          DIALOG_PASSWORD=${DIALOG_PASSWORD}
+          DIALOG_APPLICATION_HASH=${DIALOG_APPLICATION_HASH}
+          MOBITEL_APPLICATION_ID=${MOBITEL_APPLICATION_ID}
+          MOBITEL_PASSWORD=${MOBITEL_PASSWORD}
+          MOBITEL_APPLICATION_HASH=${MOBITEL_APPLICATION_HASH}
           EOF
 
       - name: Upload build and .env to Azure VM
@@ -72,22 +83,24 @@ jobs:
 
       - name: Deploy on Azure VM
         run: |
-          set -e
-          sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
-          cd ${{ secrets.PROJECT_DIR }}
+          sshpass -p '${{ secrets.SSH_PASSWORD }}' ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "${{ secrets.PROJECT_DIR }}"
 
-          # Extract new files
           tar -xzf build.tar.gz
-          
-          # Install production dependencies
-          npm install --production
-          
-          # Apply Prisma migrations (optional but recommended for production DBs)
-          # npx prisma migrate deploy
-          
-          # Reload PM2 ecosystem
-          npx pm2 reload ecosystem.config.cjs --env production
-          
-          # Clean up tarball
-          rm build.tar.gz
-          EOF
+
+          test -f prisma/seed.js || { echo "Missing prisma/seed.js after extract"; exit 1; }
+
+          npm ci --omit=dev
+
+          npx prisma generate
+          npx prisma migrate deploy
+
+          if npx pm2 describe examkade-backend >/dev/null 2>&1; then
+            npx pm2 reload ecosystem.config.cjs --env production
+          else
+            npx pm2 start ecosystem.config.cjs --env production
+          fi
+
+          rm -f build.tar.gz
+          REMOTE
