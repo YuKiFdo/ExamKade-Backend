@@ -3,11 +3,14 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   // Trust reverse proxy headers (e.g. X-Forwarded-Proto) for secure cookies
   (app as any).set('trust proxy', 1);
+  app.use(json({ limit: '1GB' }));
+  app.use(urlencoded({ limit: '1GB', extended: true }));
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

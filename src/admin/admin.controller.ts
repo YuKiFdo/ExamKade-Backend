@@ -319,7 +319,7 @@ export class AdminController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: 1024 * 1024 * 1024 },
     }),
   )
   uploadFile(
