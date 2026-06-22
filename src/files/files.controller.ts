@@ -24,7 +24,7 @@ import { SwaggerClientType } from '../common/decorators/swagger-client-type.deco
 export class FilesController {
   constructor(private filesService: FilesService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @Public()
   @ApiOperation({ summary: 'Generate a signed URL token for file access (expires in 5 min)' })
   @Get(':id/token')
   getFileToken(@Param('id') id: string) {
