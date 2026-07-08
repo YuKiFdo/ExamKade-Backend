@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentStatus, Medium, FacetKey, Prisma } from '@prisma/client';
 import { slugify } from '../common/utils/slug.util';
+import JSZip from 'jszip';
 
 interface ImportedRowError {
   row: number;
@@ -11,6 +12,89 @@ interface ImportedRowError {
 @Injectable()
 export class BulkImportService {
   constructor(private prisma: PrismaService) {}
+
+  async generateZipTemplate(categoryId: string): Promise<Buffer> {
+    const categories = await this.prisma.category.findMany();
+    const cat = categories.find((c) => c.id === categoryId);
+    if (!cat) throw new NotFoundException('Category not found');
+
+    const facets = await this.prisma.facetValue.findMany({
+      orderBy: [{ facetKey: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }],
+    });
+
+    let allowed: string[] = [];
+    let currentCat = cat;
+    while (currentCat) {
+      if (currentCat.allowedFilters && currentCat.allowedFilters.length > 0) {
+        allowed = currentCat.allowedFilters as string[];
+        break;
+      }
+      const parentId = currentCat.parentId;
+      if (parentId) {
+        const parent = categories.find((c) => c.id === parentId);
+        currentCat = parent!;
+      } else {
+        break;
+      }
+    }
+
+    if (allowed.length === 0 && cat.rootType) {
+      const ROOT_FACETS: Record<string, string[]> = {
+        PAST_PAPERS: ['EXAM', 'SUBJECT', 'YEAR', 'MEDIUM'],
+        MODEL_PAPERS: ['EXAM', 'SUBJECT', 'YEAR', 'MEDIUM'],
+        TERM_TEST: ['GRADE', 'SUBJECT', 'YEAR', 'TERM', 'PROVINCE'],
+        SYLLABUS: ['GRADE', 'SUBJECT', 'MEDIUM'],
+        TEACHERS_GUIDE: ['GRADE', 'SUBJECT', 'MEDIUM'],
+        TEXT_BOOKS: ['GRADE', 'SUBJECT', 'MEDIUM'],
+        GAZETTE: ['YEAR', 'MEDIUM'],
+      };
+      allowed = ROOT_FACETS[cat.rootType] || [];
+    }
+
+    const hasMediumFacet = allowed.some((key) => key.toUpperCase() === 'MEDIUM');
+
+    const facetOptionsList = allowed.map((key) => ({
+      key,
+      options: facets.filter((f) => f.facetKey === key)
+    }));
+
+    const zip = new JSZip();
+
+    const buildPath = (index: number, currentFolder: any) => {
+      if (index === facetOptionsList.length) {
+        if (hasMediumFacet) {
+          // Leaf folder
+        } else {
+          const mediums = ['Sinhala', 'English', 'Tamil'];
+          for (const med of mediums) {
+            currentFolder.folder(med);
+          }
+        }
+        return;
+      }
+
+      const { options } = facetOptionsList[index];
+      if (options.length === 0) {
+        buildPath(index + 1, currentFolder);
+      } else {
+        for (const opt of options) {
+          const safeLabel = opt.label.replace(/[\\/:*?"<>|]/g, '-');
+          const subFolder = currentFolder.folder(safeLabel);
+          buildPath(index + 1, subFolder);
+        }
+      }
+    };
+
+    const rootFolder = zip.folder(cat.name);
+    buildPath(0, rootFolder);
+
+    const buffer = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'STORE',
+    });
+
+    return buffer;
+  }
 
   // Helper to escape XML special characters
   private escapeXml(unsafe: string): string {

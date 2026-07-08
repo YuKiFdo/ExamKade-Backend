@@ -23,6 +23,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { DocumentsService } from '../documents/documents.service';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { BulkImportService } from '../documents/bulk-import.service';
 import { DocumentStatus, Medium, RootType, FacetKey } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
@@ -41,6 +42,7 @@ export class AdminController {
     private files: FilesService,
     private prisma: PrismaService,
     private config: ConfigService,
+    private bulkImport: BulkImportService,
   ) {}
 
   @Public()
@@ -197,6 +199,26 @@ export class AdminController {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: { parent: true },
     });
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Download ZIP template for a category' })
+  @Get('categories/:id/template-zip')
+  async downloadCategoryZipTemplate(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const zipBuffer = await this.bulkImport.generateZipTemplate(id);
+    const category = await this.prisma.category.findUnique({ where: { id } });
+    const filename = category ? `${category.name.replace(/\s+/g, '_')}_template.zip` : 'template.zip';
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': zipBuffer.length.toString(),
+    });
+    res.end(zipBuffer);
   }
 
   @UseGuards(AdminAuthGuard, RolesGuard)
