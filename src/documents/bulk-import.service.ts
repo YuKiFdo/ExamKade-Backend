@@ -60,7 +60,7 @@ export class BulkImportService {
 
     const zip = new JSZip();
 
-    const buildPath = (index: number, currentFolder: any) => {
+    const buildSamplePaths = (index: number, currentFolder: any) => {
       if (index === facetOptionsList.length) {
         if (hasMediumFacet) {
           // Leaf folder
@@ -75,18 +75,23 @@ export class BulkImportService {
 
       const { options } = facetOptionsList[index];
       if (options.length === 0) {
-        buildPath(index + 1, currentFolder);
+        buildSamplePaths(index + 1, currentFolder);
       } else {
-        for (const opt of options) {
+        // Create folders for all options at this level
+        const subFolders = options.map((opt) => {
           const safeLabel = opt.label.replace(/[\\/:*?"<>|]/g, '-');
-          const subFolder = currentFolder.folder(safeLabel);
-          buildPath(index + 1, subFolder);
+          return currentFolder.folder(safeLabel);
+        });
+
+        // Recursively go deeper ONLY for the first option to avoid Cartesian product explosion
+        if (subFolders.length > 0) {
+          buildSamplePaths(index + 1, subFolders[0]);
         }
       }
     };
 
     const rootFolder = zip.folder(cat.name);
-    buildPath(0, rootFolder);
+    buildSamplePaths(0, rootFolder);
 
     const buffer = await zip.generateAsync({
       type: 'nodebuffer',
