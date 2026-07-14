@@ -26,6 +26,15 @@ export class CategoriesController {
   }
 
   @Public()
+  @ApiOperation({ summary: 'Get category facets only' })
+  @ApiQuery({ name: 'path', required: false, type: String })
+  @Get('facets')
+  getFacetsByPath(@Query('path') path?: string) {
+    const slugs = path ? path.split('/').filter(Boolean) : [];
+    return this.categoriesService.getCategoryFacets(slugs);
+  }
+
+  @Public()
   @ApiOperation({ summary: 'Get category page with documents' })
   @ApiQuery({ name: 'path', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number })

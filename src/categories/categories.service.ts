@@ -78,9 +78,7 @@ export class CategoriesService {
     });
   }
 
-  async getCategoryPage(slugs: string[], page = 1, limit = 12, filters: Record<string, any> = {}) {
-    const { category, rootType, breadcrumbs } = await this.resolveByPath(slugs);
-    
+  async getCategoryFacetsInternal(category: any, rootType: RootType, breadcrumbs: any[]) {
     let facetKeys: FacetKey[] = [];
     if (category) {
       // Find the first category in the breadcrumbs hierarchy (from leaf to root) that has allowedFilters defined and not empty
@@ -96,15 +94,6 @@ export class CategoriesService {
     // Fallback to default facets for this rootType if none specified
     if (facetKeys.length === 0 && rootType) {
       facetKeys = this.getFacetKeysForRoot(rootType);
-    }
-
-    if (!category || !rootType) {
-      return {
-        breadcrumbs,
-        facetOptions: [],
-        documents: [],
-        pagination: { page, limit, total: 0, totalPages: 0 },
-      };
     }
 
     let categoryIds: string[];
@@ -145,7 +134,7 @@ export class CategoriesService {
       }
     }
 
-    const facetOptions = await Promise.all(
+    return Promise.all(
       facetKeys.map(async (key) => {
         const allOptions = await this.getFacetOptions(rootType, key);
         const filteredOptions = allOptions.filter((o) => activeFacetValueIds.has(o.id));
@@ -155,6 +144,44 @@ export class CategoriesService {
         };
       }),
     );
+  }
+
+  async getCategoryFacets(slugs: string[]) {
+    const { category, rootType, breadcrumbs } = await this.resolveByPath(slugs);
+    if (!category || !rootType) {
+      return [];
+    }
+    return this.getCategoryFacetsInternal(category, rootType, breadcrumbs);
+  }
+
+  async getCategoryPage(slugs: string[], page = 1, limit = 12, filters: Record<string, any> = {}) {
+    const { category, rootType, breadcrumbs } = await this.resolveByPath(slugs);
+    
+    if (!category || !rootType) {
+      return {
+        breadcrumbs,
+        facetOptions: [],
+        documents: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      };
+    }
+
+    const facetOptions = await this.getCategoryFacetsInternal(category, rootType, breadcrumbs);
+
+    let categoryIds: string[];
+    if (category.parentId === null) {
+      const all = await this.prisma.category.findMany({
+        where: { rootType },
+        select: { id: true },
+      });
+      categoryIds = all.map((c) => c.id);
+    } else {
+      const cats = await this.prisma.category.findMany({
+        where: { OR: [{ id: category.id }, { parentId: category.id }] },
+        select: { id: true },
+      });
+      categoryIds = cats.map((c) => c.id);
+    }
 
     return this.listDocumentsByCategoryIds(
       categoryIds,
