@@ -46,7 +46,10 @@ export class AuthController {
     const source = req.originalUrl?.includes('/mobile') ? 'MOBILE' : 'WEB';
     const { user, token } = await this.authService.verifyOtp(dto, source);
     this.setAuthCookie(res, token);
-    return { user: { id: user.id, mobile: user.mobile, name: user.name, subscriptionStatus: user.subscriptionStatus } };
+    return {
+      token,
+      user: { id: user.id, mobile: user.mobile, name: user.name, subscriptionStatus: user.subscriptionStatus },
+    };
   }
 
   @Public()
