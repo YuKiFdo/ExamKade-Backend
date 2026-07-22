@@ -79,6 +79,8 @@ export class CarrierService {
         ? 'https://api.dialog.lk/subscription/send'
         : 'https://api.mspace.lk/subscription/send';
 
+    console.log('[Carrier] Unsubscribe Request →', { url, payload });
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -87,12 +89,22 @@ export class CarrierService {
 
     if (!res.ok) {
       const text = await res.text();
+      console.log('[Carrier] Unsubscribe FAILED →', res.status, text);
       throw new BadRequestException(
         `Carrier unsubscribe failed: ${res.status} ${text}`,
       );
     }
 
-    return res.json() as Promise<Record<string, unknown>>;
+    const body = (await res.json()) as Record<string, any>;
+    console.log('[Carrier] Unsubscribe Response ←', JSON.stringify(body, null, 2));
+
+    if (body.statusCode && body.statusCode !== 'S1000') {
+      throw new BadRequestException(
+        `Carrier subscription error: [${body.statusCode}] ${body.statusDetail || 'Unknown error'}`,
+      );
+    }
+
+    return body;
   }
 
   private buildRequestPayload(subscriberId: string, operator: Operator) {
