@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,12 +35,15 @@ export class AuthService {
 
     console.log('[Auth] requestOtp →', { mobile, operator, rawMobile: dto.mobile });
 
-    let result: { referenceNo?: string };
+    let result: { referenceNo?: string; statusCode?: string; statusDetail?: string };
     try {
       result = await this.carrier.requestOtp(dto.mobile, operator);
       console.log('[Auth] Carrier returned →', JSON.stringify(result));
     } catch (err) {
       console.log('[Auth] Carrier threw error →', err?.message || err);
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
       if (this.config.get('NODE_ENV') !== 'production') {
         const referenceNo = `dev-${Date.now()}`;
         await this.prisma.otpSession.create({
@@ -115,6 +118,9 @@ export class AuthService {
         console.log('[Auth] Carrier verify response →', JSON.stringify(verifyResult));
       } catch (err) {
         console.log('[Auth] Carrier verify error →', err?.message || err);
+        if (err instanceof BadRequestException) {
+          throw err;
+        }
         if (this.config.get('NODE_ENV') === 'production') {
           throw new UnauthorizedException('Invalid OTP');
         }
@@ -183,6 +189,9 @@ export class AuthService {
     try {
       await this.carrier.unsubscribe(user.subscriberId, user.operator);
     } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
       if (this.config.get('NODE_ENV') === 'production') {
         throw new UnauthorizedException('Failed to unsubscribe from carrier');
       }

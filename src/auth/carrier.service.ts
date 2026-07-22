@@ -2,10 +2,18 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Operator } from '@prisma/client';
 import { toSubscriberId } from '../common/utils/slug.util';
+import { CARRIER_ERROR_CODES } from './carrier-errors';
 
 @Injectable()
 export class CarrierService {
   constructor(private config: ConfigService) { }
+
+  private checkResponse(body: any) {
+    if (body && body.statusCode && body.statusCode !== 'S1000') {
+      const desc = CARRIER_ERROR_CODES[body.statusCode] || body.statusDetail || 'Unknown carrier error';
+      throw new BadRequestException(`Carrier error: [${body.statusCode}] ${desc}`);
+    }
+  }
 
   async requestOtp(mobile: string, operator: Operator) {
     const subscriberId = toSubscriberId(mobile);
@@ -34,7 +42,8 @@ export class CarrierService {
 
     const body = await res.json();
     console.log('[Carrier] OTP Response ←', JSON.stringify(body, null, 2));
-    return body as { referenceNo?: string; statusCode?: string };
+    this.checkResponse(body);
+    return body as { referenceNo?: string; statusCode?: string; statusDetail?: string };
   }
 
   async verifyOtp(referenceNo: string, otp: string, operator: Operator) {
@@ -63,7 +72,9 @@ export class CarrierService {
       );
     }
 
-    return res.json() as Promise<Record<string, unknown>>;
+    const body = await res.json();
+    this.checkResponse(body);
+    return body as Record<string, unknown>;
   }
 
   async unsubscribe(subscriberId: string, operator: Operator) {
@@ -98,11 +109,7 @@ export class CarrierService {
     const body = (await res.json()) as Record<string, any>;
     console.log('[Carrier] Unsubscribe Response ←', JSON.stringify(body, null, 2));
 
-    if (body.statusCode && body.statusCode !== 'S1000') {
-      throw new BadRequestException(
-        `Carrier subscription error: [${body.statusCode}] ${body.statusDetail || 'Unknown error'}`,
-      );
-    }
+    this.checkResponse(body);
 
     return body;
   }
