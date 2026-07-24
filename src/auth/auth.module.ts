@@ -16,6 +16,6 @@ import { AdminJwtStrategy } from './strategies/admin-jwt.strategy';
     JwtStrategy,
     AdminJwtStrategy,
   ],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, CarrierService, JwtModule],
 })
 export class AuthModule {}

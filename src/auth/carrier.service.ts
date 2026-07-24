@@ -43,12 +43,9 @@ export class CarrierService {
     const body = await res.json();
     console.log('[Carrier] OTP Response ←', JSON.stringify(body, null, 2));
 
-    // E1351 = "User is already subscribed" — this is fine for re-login,
-    // the carrier still sends the OTP, so we just need the referenceNo.
+    // Don't throw on E1351 (already subscribed) — let the caller handle retry logic
     if (body?.statusCode !== 'E1351') {
       this.checkResponse(body);
-    } else {
-      console.log('[Carrier] User already subscribed, proceeding with OTP');
     }
 
     return body as { referenceNo?: string; statusCode?: string; statusDetail?: string };
@@ -89,8 +86,9 @@ export class CarrierService {
     const payload = {
       applicationId: this.getAppId(operator),
       password: this.getPassword(operator),
-      subscriberId,
+      version: "1.0",
       action: "0",
+      subscriberId,
     };
 
     const url =

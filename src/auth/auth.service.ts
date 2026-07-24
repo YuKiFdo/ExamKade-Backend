@@ -60,6 +60,33 @@ export class AuthService {
       throw new UnauthorizedException('Failed to send OTP');
     }
 
+    // E1351 = user already subscribed → unsubscribe first, then retry OTP
+    if (result.statusCode === 'E1351') {
+      console.log('[Auth] User already subscribed, attempting unsubscribe before retry');
+      const existingUser = await this.prisma.user.findUnique({ where: { mobile } });
+
+      if (existingUser?.subscriberId) {
+        try {
+          await this.carrier.unsubscribe(existingUser.subscriberId, operator);
+          console.log('[Auth] Unsubscribed successfully, retrying OTP request');
+        } catch (unsubErr) {
+          console.log('[Auth] Unsubscribe failed →', unsubErr?.message || unsubErr);
+          // Continue to retry OTP anyway — the carrier might still allow it
+        }
+      } else {
+        console.log('[Auth] No stored subscriberId found for unsubscribe');
+      }
+
+      // Retry OTP request after unsubscribe
+      try {
+        result = await this.carrier.requestOtp(dto.mobile, operator);
+        console.log('[Auth] Retry OTP returned →', JSON.stringify(result));
+      } catch (retryErr) {
+        console.log('[Auth] Retry OTP failed →', retryErr?.message || retryErr);
+        throw new BadRequestException('Failed to send OTP after unsubscribe. Please try again.');
+      }
+    }
+
     const referenceNo = result.referenceNo;
     if (!referenceNo) {
       console.log('[Auth] No referenceNo in carrier response');

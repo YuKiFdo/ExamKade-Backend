@@ -24,8 +24,9 @@ import { DocumentsService } from '../documents/documents.service';
 import { FilesService } from '../files/files.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BulkImportService } from '../documents/bulk-import.service';
-import { DocumentStatus, Medium, RootType, FacetKey } from '@prisma/client';
+import { DocumentStatus, Medium, RootType, FacetKey, Operator, SubscriptionStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { CarrierService } from '../auth/carrier.service';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -43,6 +44,7 @@ export class AdminController {
     private prisma: PrismaService,
     private config: ConfigService,
     private bulkImport: BulkImportService,
+    private carrier: CarrierService,
   ) {}
 
   @Public()
@@ -388,5 +390,48 @@ export class AdminController {
       create: { key: 'login_warning', value: body.showWarning.toString() }
     });
     return { success: true };
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Force unsubscribe a user from carrier' })
+  @Post('users/:id/force-unsubscribe')
+  async forceUnsubscribe(
+    @Param('id') userId: string,
+    @Body() body: { subscriberId?: string },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    // Use provided masked subscriberId, or fall back to stored one
+    const subscriberId = body.subscriberId || user.subscriberId;
+    if (!subscriberId) {
+      throw new BadRequestException('No subscriberId provided or stored for this user');
+    }
+
+    console.log('[Admin] Force unsubscribe →', { userId, mobile: user.mobile, subscriberId });
+
+    try {
+      const result = await this.carrier.unsubscribe(subscriberId, user.operator);
+      console.log('[Admin] Unsubscribe result →', JSON.stringify(result));
+
+      // Update user status in DB
+      const updated = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          subscriptionStatus: SubscriptionStatus.INACTIVE,
+          subscriberId: subscriberId, // Save the correct subscriberId
+        },
+      });
+
+      return { success: true, carrierResponse: result, user: updated };
+    } catch (err) {
+      console.log('[Admin] Force unsubscribe error →', err?.message || err);
+      return {
+        success: false,
+        error: err?.message || 'Unknown error',
+        hint: 'If E1325, the subscriberId format is invalid. Try the masked ID from carrier.',
+      };
+    }
   }
 }
