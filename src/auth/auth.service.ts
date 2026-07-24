@@ -108,6 +108,8 @@ export class AuthService {
     const isDevOtp =
       dto.referenceNo.startsWith('dev-') && dto.otp === '123456';
 
+    let maskedSubscriberId: string | null = null;
+
     if (!isDevOtp) {
       try {
         const verifyResult = await this.carrier.verifyOtp(
@@ -116,6 +118,12 @@ export class AuthService {
           session.operator,
         );
         console.log('[Auth] Carrier verify response →', JSON.stringify(verifyResult));
+
+        // Capture the masked subscriberId from the carrier response
+        if (verifyResult.subscriberId && typeof verifyResult.subscriberId === 'string') {
+          maskedSubscriberId = verifyResult.subscriberId;
+          console.log('[Auth] Masked subscriberId →', maskedSubscriberId);
+        }
       } catch (err) {
         console.log('[Auth] Carrier verify error →', err?.message || err);
         if (err instanceof BadRequestException) {
@@ -133,13 +141,16 @@ export class AuthService {
       console.log('[Auth] Dev OTP accepted');
     }
 
+    // Use masked subscriberId from carrier if available, otherwise fall back to raw MSISDN
+    const subscriberId = maskedSubscriberId || toSubscriberId(session.mobile);
+
     const user = await this.prisma.user.upsert({
       where: { mobile: session.mobile },
       create: {
         mobile: session.mobile,
         name: dto.name || null,
         operator: session.operator,
-        subscriberId: toSubscriberId(session.mobile),
+        subscriberId,
         subscriptionStatus: SubscriptionStatus.ACTIVE,
         subscribedAt: new Date(),
         // @ts-ignore - TS server cache issue with Prisma types
@@ -147,6 +158,7 @@ export class AuthService {
       },
       update: {
         operator: session.operator,
+        subscriberId,
         subscriptionStatus: SubscriptionStatus.ACTIVE,
         subscribedAt: new Date(),
         ...(dto.name ? { name: dto.name } : {}),
@@ -184,6 +196,14 @@ export class AuthService {
     }
     if (!user.subscriberId) {
       throw new UnauthorizedException('Missing subscriber ID');
+    }
+
+    // Old users may still have raw MSISDN (tel:94...) instead of masked ID
+    // The carrier API requires the masked subscriberId for unsubscribe
+    if (/^tel:\d+$/.test(user.subscriberId)) {
+      throw new BadRequestException(
+        'Please log in again before unsubscribing. Your session needs to be refreshed.',
+      );
     }
 
     try {
