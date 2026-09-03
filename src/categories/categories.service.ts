@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentStatus, FacetKey, RootType } from '@prisma/client';
+import { DocumentStatus, FacetKey, Prisma, RootType } from '@prisma/client';
 
 const ROOT_FACETS: Record<RootType, FacetKey[]> = {
   PAST_PAPERS: [FacetKey.EXAM, FacetKey.SUBJECT, FacetKey.YEAR, FacetKey.MEDIUM],
@@ -201,21 +201,57 @@ export class CategoriesService {
     limit: number,
     filters: Record<string, any>
   ) {
-    const facetWhere = Object.entries(filters).map(([k, v]) => ({
-      facets: {
-        some: {
-          facetValue: {
-            facetKey: k.toUpperCase() as FacetKey,
-            slug: v,
+    const validFacetKeys = new Set<string>(Object.values(FacetKey));
+
+    // Extract search text if provided (e.g. q="media 2019" or search="...")
+    const searchQuery =
+      typeof filters.q === 'string'
+        ? filters.q.trim()
+        : typeof filters.search === 'string'
+          ? filters.search.trim()
+          : '';
+
+    // Only map entries whose keys match actual FacetKey enum values
+    const facetEntries = Object.entries(filters).filter(([k, v]) => {
+      const upper = k.toUpperCase();
+      return (
+        validFacetKeys.has(upper) &&
+        typeof v === 'string' &&
+        v.trim() !== '' &&
+        v.toUpperCase() !== 'ALL'
+      );
+    });
+
+    const facetWhere: Prisma.DocumentWhereInput[] = facetEntries.map(
+      ([k, v]) => ({
+        facets: {
+          some: {
+            facetValue: {
+              facetKey: k.toUpperCase() as FacetKey,
+              slug: v as string,
+            },
           },
         },
-      },
-    }));
+      }),
+    );
 
-    const where = {
+    const andConditions: Prisma.DocumentWhereInput[] = [];
+    if (searchQuery) {
+      andConditions.push({
+        OR: [
+          { title: { contains: searchQuery, mode: 'insensitive' } },
+          { description: { contains: searchQuery, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (facetWhere.length > 0) {
+      andConditions.push(...facetWhere);
+    }
+
+    const where: Prisma.DocumentWhereInput = {
       status: DocumentStatus.PUBLISHED,
       categoryId: { in: categoryIds },
-      AND: facetWhere.length > 0 ? facetWhere : undefined,
+      ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     };
     const [documents, total] = await Promise.all([
       this.prisma.document.findMany({
