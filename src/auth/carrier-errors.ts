@@ -80,5 +80,8 @@ export const CARRIER_ERROR_CODES: Record<string, string> = {
   'E1602': 'Message delivery failed',
   'E1825': 'Unsupported operation',
   'E1830': 'This service is not available for users.',
+  'E1850': 'Invalid OTP entered. Please check your SMS and enter the exact 6-digit code received.',
+  'E1851': 'OTP request has expired. Please request a new OTP.',
+  'E1852': 'Maximum OTP verification attempts exceeded (limit 3). Please request a new OTP.',
   'E1854': 'OTP not found or expired. If a new OTP was requested, previous codes are invalidated. Please request a fresh OTP.',
 };
