@@ -139,6 +139,30 @@ export class DocumentsService {
     });
   }
 
+  async generateUniqueSlug(
+    title: string,
+    customSlug?: string,
+    excludeDocId?: string,
+  ): Promise<string> {
+    let baseSlug = (customSlug ? slugify(customSlug) : slugify(title));
+    if (!baseSlug) {
+      baseSlug = `doc-${Date.now().toString(36)}`;
+    }
+    let slug = baseSlug;
+    let attempts = 1;
+    while (true) {
+      const existing = await this.prisma.document.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
+      if (!existing || (excludeDocId && existing.id === excludeDocId)) {
+        return slug;
+      }
+      slug = `${baseSlug}-${attempts}`;
+      attempts++;
+    }
+  }
+
   // Admin methods
   async create(data: {
     title: string;
@@ -148,7 +172,7 @@ export class DocumentsService {
     facetValueIds?: string[];
     status?: DocumentStatus;
   }) {
-    const slug = data.slug || slugify(data.title);
+    const slug = await this.generateUniqueSlug(data.title, data.slug);
     return this.prisma.document.create({
       data: {
         title: data.title,
@@ -186,10 +210,17 @@ export class DocumentsService {
         data: facetValueIds.map((facetValueId) => ({ documentId: id, facetValueId })),
       });
     }
+
+    let slug = rest.slug;
+    if (slug !== undefined) {
+      slug = await this.generateUniqueSlug(rest.title || '', slug, id);
+    }
+
     return this.prisma.document.update({
       where: { id },
       data: {
         ...rest,
+        ...(slug !== undefined ? { slug } : {}),
         publishedAt:
           rest.status === DocumentStatus.PUBLISHED ? new Date() : undefined,
       },

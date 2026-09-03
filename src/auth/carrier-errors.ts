@@ -80,4 +80,5 @@ export const CARRIER_ERROR_CODES: Record<string, string> = {
   'E1602': 'Message delivery failed',
   'E1825': 'Unsupported operation',
   'E1830': 'This service is not available for users.',
+  'E1854': 'OTP not found or expired. If a new OTP was requested, previous codes are invalidated. Please request a fresh OTP.',
 };

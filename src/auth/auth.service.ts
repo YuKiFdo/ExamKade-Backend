@@ -106,6 +106,11 @@ export class AuthService {
       throw new UnauthorizedException('No reference number from carrier');
     }
 
+    // Invalidate any older sessions for this mobile
+    await this.prisma.otpSession.deleteMany({
+      where: { mobile },
+    });
+
     await this.prisma.otpSession.create({
       data: {
         referenceNo,
@@ -127,7 +132,7 @@ export class AuthService {
     });
     if (!session || session.expiresAt < new Date()) {
       console.log('[Auth] OTP session expired or not found');
-      throw new UnauthorizedException('OTP session expired');
+      throw new UnauthorizedException('OTP session expired. If you requested a new OTP, please use the latest code.');
     }
 
     console.log('[Auth] Session found →', { mobile: session.mobile, operator: session.operator });

@@ -560,6 +560,9 @@ export class BulkImportService {
 
     for (const row of validRowsToImport) {
       let baseSlug = slugify(row.title);
+      if (!baseSlug) {
+        baseSlug = `doc-${Date.now().toString(36)}`;
+      }
       let slug = baseSlug;
       let slugExists = await this.prisma.document.findUnique({ where: { slug } });
       let attempts = 1;
