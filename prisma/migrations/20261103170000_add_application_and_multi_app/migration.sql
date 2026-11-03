@@ -41,3 +41,4 @@ ALTER TABLE "User" ADD CONSTRAINT "User_appId_fkey" FOREIGN KEY ("appId") REFERE
 
 ALTER TABLE "OtpSession" DROP CONSTRAINT IF EXISTS "OtpSession_appId_fkey";
 ALTER TABLE "OtpSession" ADD CONSTRAINT "OtpSession_appId_fkey" FOREIGN KEY ("appId") REFERENCES "Application"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
