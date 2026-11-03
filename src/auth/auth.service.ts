@@ -11,6 +11,7 @@ import { normalizeMobile } from '../common/utils/slug.util';
 import { toSubscriberId } from '../common/utils/slug.util';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ApplicationsService } from '../applications/applications.service';
 
 @Injectable()
 export class AuthService {
@@ -19,10 +20,12 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private carrier: CarrierService,
+    private applications: ApplicationsService,
   ) {}
 
   async requestOtp(dto: RequestOtpDto) {
     const mobile = normalizeMobile(dto.mobile);
+    const appCode = dto.app?.trim() || 'examKade';
     
     let operator = dto.operator;
     if (!operator) {
@@ -33,11 +36,15 @@ export class AuthService {
       }
     }
 
-    console.log('[Auth] requestOtp →', { mobile, operator, rawMobile: dto.mobile });
+    const { app: appRecord, creds } = await this.applications.getCarrierCredentials(appCode, operator);
+    const resolvedAppCode = appRecord?.code || appCode;
+    const resolvedAppId = appRecord?.id || null;
+
+    console.log('[Auth] requestOtp →', { mobile, operator, appCode: resolvedAppCode, rawMobile: dto.mobile });
 
     let result: { referenceNo?: string; statusCode?: string; statusDetail?: string };
     try {
-      result = await this.carrier.requestOtp(dto.mobile, operator);
+      result = await this.carrier.requestOtp(dto.mobile, operator, creds);
       console.log('[Auth] Carrier returned →', JSON.stringify(result));
     } catch (err) {
       console.log('[Auth] Carrier threw error →', err?.message || err);
@@ -51,6 +58,8 @@ export class AuthService {
             referenceNo,
             mobile,
             operator,
+            appCode: resolvedAppCode,
+            appId: resolvedAppId,
             expiresAt: new Date(Date.now() + 10 * 60 * 1000),
           },
         });
@@ -63,11 +72,16 @@ export class AuthService {
     // E1351 = user already subscribed → unsubscribe first, then retry OTP
     if (result.statusCode === 'E1351') {
       console.log('[Auth] User already subscribed, attempting unsubscribe before retry');
-      const existingUser = await this.prisma.user.findUnique({ where: { mobile } });
+      const existingUser = await this.prisma.user.findFirst({
+        where: {
+          mobile,
+          appCode: resolvedAppCode,
+        },
+      });
 
       if (existingUser?.subscriberId) {
         try {
-          await this.carrier.unsubscribe(existingUser.subscriberId, operator);
+          await this.carrier.unsubscribe(existingUser.subscriberId, operator, creds);
           console.log('[Auth] Unsubscribed successfully, retrying OTP request');
         } catch (unsubErr) {
           console.log('[Auth] Unsubscribe failed →', unsubErr?.message || unsubErr);
@@ -79,7 +93,7 @@ export class AuthService {
 
       // Retry OTP request after unsubscribe
       try {
-        result = await this.carrier.requestOtp(dto.mobile, operator);
+        result = await this.carrier.requestOtp(dto.mobile, operator, creds);
         console.log('[Auth] Retry OTP returned →', JSON.stringify(result));
       } catch (retryErr) {
         console.log('[Auth] Retry OTP failed →', retryErr?.message || retryErr);
@@ -97,6 +111,8 @@ export class AuthService {
             referenceNo: devRef,
             mobile,
             operator,
+            appCode: resolvedAppCode,
+            appId: resolvedAppId,
             expiresAt: new Date(Date.now() + 10 * 60 * 1000),
           },
         });
@@ -106,9 +122,12 @@ export class AuthService {
       throw new UnauthorizedException('No reference number from carrier');
     }
 
-    // Invalidate any older sessions for this mobile
+    // Invalidate any older sessions for this mobile & app
     await this.prisma.otpSession.deleteMany({
-      where: { mobile },
+      where: {
+        mobile,
+        appCode: resolvedAppCode,
+      },
     });
 
     await this.prisma.otpSession.create({
@@ -116,6 +135,8 @@ export class AuthService {
         referenceNo,
         mobile,
         operator,
+        appCode: resolvedAppCode,
+        appId: resolvedAppId,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
@@ -135,7 +156,12 @@ export class AuthService {
       throw new UnauthorizedException('OTP session expired. If you requested a new OTP, please use the latest code.');
     }
 
-    console.log('[Auth] Session found →', { mobile: session.mobile, operator: session.operator });
+    const appCode = session.appCode || dto.app?.trim() || 'examKade';
+    const { app: appRecord, creds } = await this.applications.getCarrierCredentials(appCode, session.operator);
+    const resolvedAppCode = appRecord?.code || appCode;
+    const resolvedAppId = appRecord?.id || session.appId || null;
+
+    console.log('[Auth] Session found →', { mobile: session.mobile, operator: session.operator, appCode: resolvedAppCode });
 
     const isDevOtp =
       dto.referenceNo.startsWith('dev-') && dto.otp === '123456';
@@ -148,6 +174,7 @@ export class AuthService {
           dto.referenceNo,
           dto.otp,
           session.operator,
+          creds,
         );
         console.log('[Auth] Carrier verify response →', JSON.stringify(verifyResult));
 
@@ -177,7 +204,12 @@ export class AuthService {
     const subscriberId = maskedSubscriberId || toSubscriberId(session.mobile);
 
     const user = await this.prisma.user.upsert({
-      where: { mobile: session.mobile },
+      where: {
+        mobile_appCode: {
+          mobile: session.mobile,
+          appCode: resolvedAppCode,
+        },
+      },
       create: {
         mobile: session.mobile,
         name: dto.name || null,
@@ -185,8 +217,9 @@ export class AuthService {
         subscriberId,
         subscriptionStatus: SubscriptionStatus.ACTIVE,
         subscribedAt: new Date(),
-        // @ts-ignore - TS server cache issue with Prisma types
-        registrationSource: source || (dto as any).source || 'WEB',
+        registrationSource: (source || dto.source || 'WEB') as any,
+        appCode: resolvedAppCode,
+        appId: resolvedAppId,
       },
       update: {
         operator: session.operator,
@@ -194,12 +227,16 @@ export class AuthService {
         subscriptionStatus: SubscriptionStatus.ACTIVE,
         subscribedAt: new Date(),
         ...(dto.name ? { name: dto.name } : {}),
+        ...(resolvedAppId ? { appId: resolvedAppId } : {}),
+      },
+      include: {
+        app: true,
       },
     });
 
     await this.prisma.otpSession.delete({ where: { id: session.id } });
 
-    console.log('[Auth] User logged in →', { userId: user.id, mobile: user.mobile, status: user.subscriptionStatus });
+    console.log('[Auth] User logged in →', { userId: user.id, mobile: user.mobile, appCode: user.appCode, status: user.subscriptionStatus });
     const token = this.signUserToken(user.id, user.mobile);
     return { user, token };
   }
@@ -215,13 +252,19 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { app: true },
+    });
     if (!user) throw new UnauthorizedException();
     return user;
   }
 
   async unsubscribe(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { app: true },
+    });
     if (!user) throw new UnauthorizedException();
     if (user.subscriptionStatus !== SubscriptionStatus.ACTIVE) {
       throw new UnauthorizedException('User is not active');
@@ -230,16 +273,19 @@ export class AuthService {
       throw new UnauthorizedException('Missing subscriber ID');
     }
 
-    // Old users may still have raw MSISDN (tel:94...) instead of masked ID
-    // The carrier API requires the masked subscriberId for unsubscribe
     if (/^tel:\d+$/.test(user.subscriberId)) {
       throw new BadRequestException(
         'Please log in again before unsubscribing. Your session needs to be refreshed.',
       );
     }
 
+    const { creds } = await this.applications.getCarrierCredentials(
+      user.appCode || user.app?.code,
+      user.operator,
+    );
+
     try {
-      await this.carrier.unsubscribe(user.subscriberId, user.operator);
+      await this.carrier.unsubscribe(user.subscriberId, user.operator, creds);
     } catch (err) {
       if (err instanceof BadRequestException) {
         throw err;

@@ -4,6 +4,12 @@ import { Operator } from '@prisma/client';
 import { toSubscriberId } from '../common/utils/slug.util';
 import { CARRIER_ERROR_CODES } from './carrier-errors';
 
+export interface CarrierCredentials {
+  applicationId: string;
+  password: string;
+  applicationHash?: string;
+}
+
 @Injectable()
 export class CarrierService {
   constructor(private config: ConfigService) { }
@@ -15,9 +21,9 @@ export class CarrierService {
     }
   }
 
-  async requestOtp(mobile: string, operator: Operator) {
+  async requestOtp(mobile: string, operator: Operator, creds?: CarrierCredentials) {
     const subscriberId = toSubscriberId(mobile);
-    const payload = this.buildRequestPayload(subscriberId, operator);
+    const payload = this.buildRequestPayload(subscriberId, operator, creds);
 
     const url =
       operator === Operator.DIALOG
@@ -51,10 +57,10 @@ export class CarrierService {
     return body as { referenceNo?: string; statusCode?: string; statusDetail?: string };
   }
 
-  async verifyOtp(referenceNo: string, otp: string, operator: Operator) {
+  async verifyOtp(referenceNo: string, otp: string, operator: Operator, creds?: CarrierCredentials) {
     const payload = {
-      applicationId: this.getAppId(operator),
-      password: this.getPassword(operator),
+      applicationId: creds?.applicationId || this.getAppId(operator),
+      password: creds?.password || this.getPassword(operator),
       referenceNo,
       otp,
     };
@@ -82,10 +88,10 @@ export class CarrierService {
     return body as Record<string, unknown>;
   }
 
-  async unsubscribe(subscriberId: string, operator: Operator) {
+  async unsubscribe(subscriberId: string, operator: Operator, creds?: CarrierCredentials) {
     const payload = {
-      applicationId: this.getAppId(operator),
-      password: this.getPassword(operator),
+      applicationId: creds?.applicationId || this.getAppId(operator),
+      password: creds?.password || this.getPassword(operator),
       version: "1.0",
       action: "0",
       subscriberId,
@@ -120,20 +126,20 @@ export class CarrierService {
     return body;
   }
 
-  private buildRequestPayload(subscriberId: string, operator: Operator) {
+  private buildRequestPayload(subscriberId: string, operator: Operator, creds?: CarrierCredentials) {
     return {
-      applicationId: this.getAppId(operator),
-      password: this.getPassword(operator),
+      applicationId: creds?.applicationId || this.getAppId(operator),
+      password: creds?.password || this.getPassword(operator),
       subscriberId,
       applicationHash:
-        operator === Operator.DIALOG
+        creds?.applicationHash ||
+        (operator === Operator.DIALOG
           ? this.config.get('DIALOG_APPLICATION_HASH') || 'abcdefgh'
-          : this.config.get('MOBITEL_APPLICATION_HASH') || 'abcdefgh',
+          : this.config.get('MOBITEL_APPLICATION_HASH') || 'abcdefgh'),
       applicationMetaData: {
         client: 'MOBILEAPP',
         device: 'Xiaomi Mi 11 Lite',
         os: 'Android',
-        // appCode: this.config.get('CORS_ORIGIN') || 'http://localhost:3000',
         appCode: 'https://play.google.com/store/apps/'
       },
     };

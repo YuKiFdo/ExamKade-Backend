@@ -11,4 +11,8 @@ export class RequestOtpDto {
   @IsOptional()
   @IsEnum(Operator)
   operator?: Operator;
+
+  @IsOptional()
+  @IsString()
+  app?: string;
 }

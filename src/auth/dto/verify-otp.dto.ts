@@ -15,4 +15,8 @@ export class VerifyOtpDto {
   @IsString()
   @IsOptional()
   source?: 'WEB' | 'MOBILE';
+
+  @IsOptional()
+  @IsString()
+  app?: string;
 }

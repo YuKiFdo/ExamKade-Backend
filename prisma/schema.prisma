@@ -130,9 +130,25 @@ enum RegistrationSource {
   MOBILE
 }
 
+model Application {
+  id              String        @id @default(cuid())
+  name            String
+  code            String        @unique
+  dialogAppId     String?
+  dialogPassword  String?
+  dialogAppHash   String?       @default("abcdefgh")
+  mobitelAppId    String?
+  mobitelPassword String?
+  mobitelAppHash  String?       @default("abcdefgh")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  users           User[]
+  otpSessions     OtpSession[]
+}
+
 model User {
   id                 String             @id @default(cuid())
-  mobile             String             @unique
+  mobile             String
   name               String?
   operator           Operator
   subscriberId       String?
@@ -141,19 +157,32 @@ model User {
   registrationSource RegistrationSource @default(WEB)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+  appCode            String             @default("examKade")
+  appId              String?
+  app                Application?       @relation(fields: [appId], references: [id], onDelete: SetNull)
   downloadLogs       DownloadLog[]
   otpSessions        OtpSession[]
+
+  @@unique([mobile, appCode])
+  @@index([appCode])
+  @@index([appId])
 }
 
 model OtpSession {
-  id          String    @id @default(cuid())
-  referenceNo String    @unique
+  id          String       @id @default(cuid())
+  referenceNo String       @unique
   mobile      String
   operator    Operator
+  appCode     String       @default("examKade")
+  appId       String?
+  app         Application? @relation(fields: [appId], references: [id], onDelete: SetNull)
   expiresAt   DateTime
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime     @default(now())
   userId      String?
-  user        User?     @relation(fields: [userId], references: [id])
+  user        User?        @relation(fields: [userId], references: [id])
+
+  @@index([mobile])
+  @@index([appCode])
 }
 
 model DownloadLog {

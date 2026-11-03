@@ -27,6 +27,9 @@ import { BulkImportService } from '../documents/bulk-import.service';
 import { DocumentStatus, Medium, RootType, FacetKey, Operator, SubscriptionStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { CarrierService } from '../auth/carrier.service';
+import { ApplicationsService } from '../applications/applications.service';
+import { CreateApplicationDto } from '../applications/dto/create-application.dto';
+import { UpdateApplicationDto } from '../applications/dto/update-application.dto';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -45,6 +48,7 @@ export class AdminController {
     private config: ConfigService,
     private bulkImport: BulkImportService,
     private carrier: CarrierService,
+    private applications: ApplicationsService,
   ) {}
 
   @Public()
@@ -104,32 +108,125 @@ export class AdminController {
   @Roles('admin')
   @ApiOperation({ summary: 'Get users' })
   @Get('users')
-  listUsers(@Query('page') page?: string) {
-    const p = page ? parseInt(page, 10) : 1;
-    return this.prisma.user.findMany({
-      include: { _count: { select: { downloadLogs: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (p - 1) * 20,
-      take: 20,
-    });
+  async listUsers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('source') source?: string,
+    @Query('app') app?: string,
+  ) {
+    const p = page ? Math.max(1, parseInt(page, 10)) : 1;
+    const take = limit ? Math.max(1, parseInt(limit, 10)) : 20;
+    const where: any = {};
+    if (source && source !== 'ALL') {
+      where.registrationSource = source;
+    }
+    if (app && app !== 'ALL') {
+      where.OR = [
+        { appCode: app },
+        { appId: app },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        include: {
+          app: { select: { id: true, name: true, code: true } },
+          _count: { select: { downloadLogs: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (p - 1) * take,
+        take,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      users,
+      total,
+      page: p,
+      totalPages: Math.ceil(total / take) || 1,
+    };
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get applications' })
+  @Get('applications')
+  listApplications() {
+    return this.applications.findAll();
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get application by id' })
+  @Get('applications/:id')
+  getApplication(@Param('id') id: string) {
+    return this.applications.findById(id);
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Create application' })
+  @Post('applications')
+  createApplication(@Body() body: CreateApplicationDto) {
+    return this.applications.create(body);
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update application' })
+  @Patch('applications/:id')
+  updateApplication(@Param('id') id: string, @Body() body: UpdateApplicationDto) {
+    return this.applications.update(id, body);
+  }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Delete application' })
+  @Delete('applications/:id')
+  deleteApplication(@Param('id') id: string) {
+    return this.applications.delete(id);
   }
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get downloads' })
   @Get('downloads')
-  listDownloads(@Query('page') page?: string) {
-    const p = page ? parseInt(page, 10) : 1;
-    return this.prisma.downloadLog.findMany({
-      include: {
-        user: { select: { mobile: true, operator: true } },
-        document: { select: { title: true, slug: true } },
-        documentFile: { select: { medium: true, fileName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (p - 1) * 20,
-      take: 20,
-    });
+  async listDownloads(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = page ? Math.max(1, parseInt(page, 10)) : 1;
+    const take = limit ? Math.max(1, parseInt(limit, 10)) : 20;
+
+    const [downloads, total] = await Promise.all([
+      this.prisma.downloadLog.findMany({
+        include: {
+          user: {
+            select: {
+              mobile: true,
+              operator: true,
+              appCode: true,
+              app: { select: { name: true, code: true } },
+            },
+          },
+          document: { select: { title: true, slug: true } },
+          documentFile: { select: { medium: true, fileName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (p - 1) * take,
+        take,
+      }),
+      this.prisma.downloadLog.count(),
+    ]);
+
+    return {
+      downloads,
+      total,
+      page: p,
+      totalPages: Math.ceil(total / take) || 1,
+    };
   }
 
   @UseGuards(AdminAuthGuard, RolesGuard)
@@ -142,13 +239,16 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Get facets  id' })
+  @ApiOperation({ summary: 'Get facets id' })
   @Get('facets/:id')
   async getFacet(@Param('id') id: string) {
     const facet = await this.prisma.facetValue.findUnique({ where: { id } });
     if (!facet) throw new NotFoundException('Filter option not found');
     return facet;
   }
+
+  @UseGuards(AdminAuthGuard, RolesGuard)
+  @Roles('admin')
   @ApiOperation({ summary: 'Post facets' })
   @Post('facets')
   createFacet(
@@ -165,7 +265,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Patch facets  id' })
+  @ApiOperation({ summary: 'Patch facets id' })
   @Patch('facets/:id')
   updateFacet(
     @Param('id') id: string,
@@ -181,7 +281,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Delete facets  id' })
+  @ApiOperation({ summary: 'Delete facets id' })
   @Delete('facets/:id')
   async deleteFacet(@Param('id') id: string) {
     const docCount = await this.prisma.documentFacet.count({ where: { facetValueId: id } });
@@ -243,7 +343,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Patch categories  id' })
+  @ApiOperation({ summary: 'Patch categories id' })
   @Patch('categories/:id')
   updateCategory(
     @Param('id') id: string,
@@ -261,7 +361,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Delete categories  id' })
+  @ApiOperation({ summary: 'Delete categories id' })
   @Delete('categories/:id')
   async deleteCategory(@Param('id') id: string) {
     const docCount = await this.prisma.document.count({ where: { categoryId: id } });
@@ -285,7 +385,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Get documents  id' })
+  @ApiOperation({ summary: 'Get documents id' })
   @Get('documents/:id')
   getDocument(@Param('id') id: string) {
     return this.documents.findByIdAdmin(id);
@@ -311,7 +411,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Patch documents  id' })
+  @ApiOperation({ summary: 'Patch documents id' })
   @Patch('documents/:id')
   updateDocument(
     @Param('id') id: string,
@@ -330,7 +430,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Delete documents  id' })
+  @ApiOperation({ summary: 'Delete documents id' })
   @Delete('documents/:id')
   deleteDocument(@Param('id') id: string) {
     return this.documents.delete(id);
@@ -338,7 +438,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Post documents  id files' })
+  @ApiOperation({ summary: 'Post documents id files' })
   @Post('documents/:id/files')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -364,7 +464,7 @@ export class AdminController {
 
   @UseGuards(AdminAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiOperation({ summary: 'Delete files  id' })
+  @ApiOperation({ summary: 'Delete files id' })
   @Delete('files/:id')
   deleteFile(@Param('id') id: string) {
     return this.files.deleteFile(id);
@@ -400,7 +500,10 @@ export class AdminController {
     @Param('id') userId: string,
     @Body() body: { subscriberId?: string },
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { app: true },
+    });
     if (!user) throw new NotFoundException('User not found');
 
     // Use provided masked subscriberId, or fall back to stored one
@@ -409,10 +512,15 @@ export class AdminController {
       throw new BadRequestException('No subscriberId provided or stored for this user');
     }
 
-    console.log('[Admin] Force unsubscribe →', { userId, mobile: user.mobile, subscriberId });
+    console.log('[Admin] Force unsubscribe →', { userId, mobile: user.mobile, subscriberId, appCode: user.appCode });
+
+    const { creds } = await this.applications.getCarrierCredentials(
+      user.appCode || user.app?.code,
+      user.operator,
+    );
 
     try {
-      const result = await this.carrier.unsubscribe(subscriberId, user.operator);
+      const result = await this.carrier.unsubscribe(subscriberId, user.operator, creds);
       console.log('[Admin] Unsubscribe result →', JSON.stringify(result));
 
       // Update user status in DB

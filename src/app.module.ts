@@ -7,6 +7,7 @@ import { StorageModule } from './storage/storage.module';
 import { CategoriesModule } from './categories/categories.module';
 import { DocumentsModule } from './documents/documents.module';
 import { FilesModule } from './files/files.module';
+import { ApplicationsModule } from './applications/applications.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -20,6 +21,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     CategoriesModule,
     DocumentsModule,
     FilesModule,
+    ApplicationsModule,
     AuthModule,
     AdminModule,
   ],

@@ -48,7 +48,14 @@ export class AuthController {
     this.setAuthCookie(res, token);
     return {
       token,
-      user: { id: user.id, mobile: user.mobile, name: user.name, subscriptionStatus: user.subscriptionStatus },
+      user: {
+        id: user.id,
+        mobile: user.mobile,
+        name: user.name,
+        subscriptionStatus: user.subscriptionStatus,
+        appCode: user.appCode,
+        appId: user.appId,
+      },
     };
   }
 
